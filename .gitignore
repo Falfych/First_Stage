@@ -1,0 +1,9 @@
+# Скрытая папка настроек Visual Studio
+.vs/
+*.pyproj
+*.user
+*.suo
+
+# Временные файлы Python
+__pycache__/
+*.pyc
