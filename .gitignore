@@ -3,6 +3,8 @@
 *.pyproj
 *.user
 *.suo
+log.xml
+
 
 # Временные файлы Python
 __pycache__/
