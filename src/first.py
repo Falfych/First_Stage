@@ -1,8 +1,12 @@
 import os
 import sys
 import argparse
+import base64
 from datetime import datetime
 import xml.etree.ElementTree as xml_et
+
+current_path = []
+vfs_root = None
 
 
 def expand_env_variables(text: str) -> str:
@@ -38,11 +42,73 @@ def log_event(log_path: str, command: str, args: list):
     tree.write(log_path, encoding="utf-8", xml_declaration=True)
 
 
-def run_builtin_cmd(command: str, args: list) -> bool:
-    if command in ["ls", "cd"]:
-        print(f"Вызвана команда-заглушка: {command}")
-        print(f"Аргументы: {args if args else 'нет'}")
+def get_current_node():
+    node = vfs_root
+    for dir_name in current_path:
+        found = None
+        for child in node.findall("dir"):
+            if child.get("name") == dir_name:
+                found = child
+                break
+        if found is not None:
+            node = found
+        else:
+            return None
+    return node
+
+
+def run_ls_cmd() -> bool:
+    node = get_current_node()
+    if node is None:
+        print("Ошибка: текущая директория не найдена.")
+        return False
+    for child in node.findall("dir"):
+        print(f"[DIR]  {child.get('name')}")
+    for child in node.findall("file"):
+        print(f"[FILE] {child.get('name')}")
+    return True
+
+
+def run_cd_cmd(args: list) -> bool:
+    global current_path
+    if not args or args[0] == "/":
+        current_path = []
         return True
+    target = args[0]
+    if target == "..":
+        if current_path:
+            current_path.pop()
+        return True
+    node = get_current_node()
+    if node is None:
+        print("Ошибка: текущая директория не найдена.")
+        return False
+    for child in node.findall("dir"):
+        if child.get("name") == target:
+            current_path.append(target)
+            return True
+    print(f"Ошибка cd: Папка '{target}' не найдена.")
+    return False
+
+
+def run_cat_cmd(args: list) -> bool:
+    if not args:
+        print("Ошибка cat: не указан файл.")
+        return False
+    filename = args[0]
+    node = get_current_node()
+    if node is None:
+        return False
+    for child in node.findall("file"):
+        if child.get("name") == filename:
+            content_b64 = child.get("content", "")
+            try:
+                decoded = base64.b64decode(content_b64).decode("utf-8")
+                print(decoded)
+            except Exception:
+                print(content_b64)
+            return True
+    print(f"Ошибка cat: Файл '{filename}' не найден.")
     return False
 
 
@@ -60,9 +126,12 @@ def execute_command(user_input: str, log_path: str) -> bool:
     if command == "exit":
         print("Завершение работы эмулятора.")
         return False
-
-    if run_builtin_cmd(command, args):
-        return True
+    elif command == "ls":
+        return run_ls_cmd()
+    elif command == "cd":
+        return run_cd_cmd(args)
+    elif command == "cat":
+        return run_cat_cmd(args)
 
     print(f"Ошибка: команда '{command}' не найдена.")
     return False
@@ -70,10 +139,10 @@ def execute_command(user_input: str, log_path: str) -> bool:
 
 def create_parser():
     parser = argparse.ArgumentParser(
-        description="Эмулятор оболочки ОС. Этап 2."
+        description="Эмулятор оболочки ОС. Этап 3."
     )
     parser.add_argument(
-        "--vfs", required=True, help="Путь к физическому расположению VFS"
+        "--vfs", required=True, help="Путь к XML файлу VFS"
     )
     parser.add_argument(
         "--log", required=True, help="Путь к лог-файлу XML"
@@ -96,7 +165,8 @@ def run_startup_script(script_path: str, log_path: str, vfs_name: str):
             if not line or line.startswith("#"):
                 continue
 
-            print(f"{vfs_name} > {line}")
+            path_str = "/" + "/".join(current_path)
+            print(f"{vfs_name}:{path_str} > {line}")
 
             if not execute_command(line, log_path):
                 print("Запуск прерван: Ошибка во время скрипта.")
@@ -104,9 +174,26 @@ def run_startup_script(script_path: str, log_path: str, vfs_name: str):
     print("--- Стартовый скрипт успешно выполнен ---\n")
 
 
+def load_vfs(vfs_path: str):
+    global vfs_root
+    if not os.path.exists(vfs_path):
+        print(f"Критическая ошибка: Файл VFS '{vfs_path}' не найден.")
+        sys.exit(1)
+    try:
+        tree = xml_et.parse(vfs_path)
+        vfs_root = tree.getroot()
+        if vfs_root.tag != "vfs":
+            raise ValueError("Корневой тег должен быть <vfs>")
+    except Exception as e:
+        print(f"Критическая ошибка: Неверный формат VFS XML. Ошибка: {e}")
+        sys.exit(1)
+
+
 def main():
     parser = create_parser()
     args = parser.parse_args()
+
+    load_vfs(args.vfs)
 
     print("=== Отладочный вывод конфигурации ===")
     print(f"VFS Path:   {args.vfs}")
@@ -115,15 +202,15 @@ def main():
     print(f"Script OS:  {script_status}")
     print("=====================================\n")
 
-    vfs_clean = args.vfs.strip("/\\")
-    vfs_name = os.path.basename(vfs_clean) or "MyVFS"
+    vfs_name = vfs_root.get("name", "MyVFS")
 
     if args.script:
         run_startup_script(args.script, args.log, vfs_name)
 
     while True:
         try:
-            user_input = input(f"{vfs_name} > ").strip()
+            path_str = "/" + "/".join(current_path)
+            user_input = input(f"{vfs_name}:{path_str} > ").strip()
             if not user_input:
                 continue
             success = execute_command(user_input, args.log)
@@ -138,4 +225,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

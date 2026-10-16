@@ -1,7 +1,7 @@
 ls
-cd folder1
+cd level1
 ls
-cd folder2
+cd level2
+cd level3
 ls
-cd ..
-ls
+cat secret.txt

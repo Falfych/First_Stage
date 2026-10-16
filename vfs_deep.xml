@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vfs name="high_root">
+  <dir name="level1">
+    <dir name="level2">
+      <dir name="level3">
+        <file name="secret.txt" content="bXlyZWE=" />
+      </dir>
+    </dir>
+  </dir>
+</vfs>
