@@ -1,7 +1,13 @@
-ls
+pwd
+du
 cd level1
-ls
+pwd
 cd level2
 cd level3
-ls
-cat secret.txt
+pwd
+du
+du secret.txt
+cd ..
+du level3
+cd /level1/../level1/level2/level3
+pwd

@@ -42,9 +42,9 @@ def log_event(log_path: str, command: str, args: list):
     tree.write(log_path, encoding="utf-8", xml_declaration=True)
 
 
-def get_current_node():
+def check_node_by_path(path_list):
     node = vfs_root
-    for dir_name in current_path:
+    for dir_name in path_list:
         found = None
         for child in node.findall("dir"):
             if child.get("name") == dir_name:
@@ -55,6 +55,10 @@ def get_current_node():
         else:
             return None
     return node
+
+
+def get_current_node():
+    return check_node_by_path(current_path)
 
 
 def run_ls_cmd() -> bool:
@@ -69,26 +73,40 @@ def run_ls_cmd() -> bool:
     return True
 
 
+def process_cd_parts(parts: list, temp_path: list) -> bool:
+    for part in parts:
+        if not part or part == ".":
+            continue
+        if part == "..":
+            if temp_path:
+                temp_path.pop()
+            continue
+        temp_path.append(part)
+        if check_node_by_path(temp_path) is None:
+            return False
+    return True
+
+
 def run_cd_cmd(args: list) -> bool:
     global current_path
-    if not args or args[0] == "/":
+    if not args:
         current_path = []
         return True
-    target = args[0]
-    if target == "..":
-        if current_path:
-            current_path.pop()
+
+    raw_target = args[0]
+    if raw_target == "/":
+        current_path = []
         return True
-    node = get_current_node()
-    if node is None:
-        print("Ошибка: текущая директория не найдена.")
+
+    temp_path = [] if raw_target.startswith("/") else list(current_path)
+    parts = raw_target.split("/")
+
+    if not process_cd_parts(parts, temp_path):
+        print(f"Ошибка cd: Папка '{raw_target}' не найдена.")
         return False
-    for child in node.findall("dir"):
-        if child.get("name") == target:
-            current_path.append(target)
-            return True
-    print(f"Ошибка cd: Папка '{target}' не найдена.")
-    return False
+
+    current_path = temp_path
+    return True
 
 
 def run_cat_cmd(args: list) -> bool:
@@ -112,6 +130,59 @@ def run_cat_cmd(args: list) -> bool:
     return False
 
 
+def run_pwd_cmd() -> bool:
+    path_str = "/" + "/".join(current_path)
+    print(path_str)
+    return True
+
+
+def calculate_node_size(node) -> int:
+    total_size = 0
+    for child_file in node.findall("file"):
+        content_b64 = child_file.get("content", "")
+        try:
+            total_size += len(base64.b64decode(content_b64))
+        except Exception:
+            total_size += len(content_b64)
+    for child_dir in node.findall("dir"):
+        total_size += calculate_node_size(child_dir)
+    return total_size
+
+
+def get_item_size(child) -> int:
+    content_b64 = child.get("content", "")
+    try:
+        return len(base64.b64decode(content_b64))
+    except Exception:
+        return len(content_b64)
+
+
+def print_target_size(node, target) -> bool:
+    for child in node.findall("file"):
+        if child.get("name") == target:
+            print(f"{get_item_size(child)}\t{target}")
+            return True
+    for child in node.findall("dir"):
+        if child.get("name") == target:
+            print(f"{calculate_node_size(child)}\t{target}")
+            return True
+    print(f"Ошибка du: '{target}' не найден.")
+    return False
+
+
+def run_du_cmd(args: list) -> bool:
+    node = get_current_node()
+    if node is None:
+        return False
+    if args:
+        return print_target_size(node, args[0])
+    for child in node.findall("dir"):
+        print(f"{calculate_node_size(child)}\t{child.get('name')}")
+    for child in node.findall("file"):
+        print(f"{get_item_size(child)}\t{child.get('name')}")
+    return True
+
+
 def execute_command(user_input: str, log_path: str) -> bool:
     if not user_input:
         return True
@@ -126,12 +197,16 @@ def execute_command(user_input: str, log_path: str) -> bool:
     if command == "exit":
         print("Завершение работы эмулятора.")
         return False
-    elif command == "ls":
+    if command == "ls":
         return run_ls_cmd()
-    elif command == "cd":
+    if command == "cd":
         return run_cd_cmd(args)
-    elif command == "cat":
+    if command == "cat":
         return run_cat_cmd(args)
+    if command == "pwd":
+        return run_pwd_cmd()
+    if command == "du":
+        return run_du_cmd(args)
 
     print(f"Ошибка: команда '{command}' не найдена.")
     return False
@@ -139,7 +214,7 @@ def execute_command(user_input: str, log_path: str) -> bool:
 
 def create_parser():
     parser = argparse.ArgumentParser(
-        description="Эмулятор оболочки ОС. Этап 3."
+        description="Эмулятор оболочки ОС. Этап 4."
     )
     parser.add_argument(
         "--vfs", required=True, help="Путь к XML файлу VFS"
