@@ -1,13 +1,6 @@
-pwd
-du
-cd level1
-pwd
-cd level2
-cd level3
-pwd
-du
-du secret.txt
-cd ..
-du level3
 cd /level1/../level1/level2/level3
-pwd
+ls
+cp secret.txt copy.txt
+ls
+cat copy.txt
+cp non_existent.txt broken.txt

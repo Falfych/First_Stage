@@ -5,6 +5,7 @@ import base64
 from datetime import datetime
 import xml.etree.ElementTree as xml_et
 
+REQUIRED_CP_ARGS = 2
 current_path = []
 vfs_root = None
 
@@ -183,6 +184,42 @@ def run_du_cmd(args: list) -> bool:
     return True
 
 
+def find_file_node(node, name):
+    for child in node.findall("file"):
+        if child.get("name") == name:
+            return child
+    return None
+
+
+def execute_cp(node, src, dest) -> bool:
+    src_file = find_file_node(node, src)
+    if src_file is None:
+        print(f"Ошибка cp: Файл '{src}' не найден.")
+        return False
+
+    for child_dir in node.findall("dir"):
+        if child_dir.get("name") == dest:
+            new_file = xml_et.SubElement(child_dir, "file")
+            new_file.set("name", src)
+            new_file.set("content", src_file.get("content", ""))
+            return True
+
+    new_file = xml_et.SubElement(node, "file")
+    new_file.set("name", dest)
+    new_file.set("content", src_file.get("content", ""))
+    return True
+
+
+def run_cp_cmd(args: list) -> bool:
+    if len(args) < REQUIRED_CP_ARGS:
+        print("Ошибка cp: Нужно указать источник и приемник.")
+        return False
+    node = get_current_node()
+    if node is None:
+        return False
+    return execute_cp(node, args[0], args[1])
+
+
 def execute_command(user_input: str, log_path: str) -> bool:
     if not user_input:
         return True
@@ -207,6 +244,8 @@ def execute_command(user_input: str, log_path: str) -> bool:
         return run_pwd_cmd()
     if command == "du":
         return run_du_cmd(args)
+    if command == "cp":
+        return run_cp_cmd(args)
 
     print(f"Ошибка: команда '{command}' не найдена.")
     return False
@@ -214,7 +253,7 @@ def execute_command(user_input: str, log_path: str) -> bool:
 
 def create_parser():
     parser = argparse.ArgumentParser(
-        description="Эмулятор оболочки ОС. Этап 4."
+        description="Эмулятор оболочки ОС. Этап 5."
     )
     parser.add_argument(
         "--vfs", required=True, help="Путь к XML файлу VFS"
